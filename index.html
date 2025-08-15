@@ -1,22 +1,473 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Peta Pemantauan Rona</title>
+  <meta charset="utf-8" />
+  <title>WebGIS Leaflet + Measure + Markers + KML/KMZ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./style.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- SHP.js -->
+  <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
+
+  <!-- Turf.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <!-- tokml (GeoJSON -> KML) -->
+  <script src="https://unpkg.com/tokml/tokml.js"></script>
+
+  <!-- JSZip (untuk KMZ) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    #map { width: 100%; height: 90vh; }
+
+    /* Tombol kontrol */
+    .leaflet-control-btn {
+      background: #fff;
+      border: 2px solid #ccc;
+      width: 34px;
+      height: 34px;
+      line-height: 30px;
+      text-align: center;
+      font-size: 18px;
+      cursor: pointer;
+      border-radius: 4px;
+      user-select: none;
+    }
+    .leaflet-control-btn + .leaflet-control-btn { margin-top: 6px; }
+    .leaflet-control-btn.active { background: #c6f6d5; border-color: #38a169; }
+
+    /* Panel status pengukuran */
+    .measure-status {
+      background: #ffffffcc;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font: 12px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      min-width: 180px;
+    }
+    .measure-status b { display: inline-block; width: 60px; }
+
+    /* Toolbar marker */
+    .marker-toolbar {
+      background: #fff;
+      border: 2px solid #ccc;
+      padding: 6px;
+      border-radius: 6px;
+      font: 12px/1.3 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    }
+    .marker-toolbar label { margin-right: 6px; font-weight: 600; }
+    .marker-toolbar select, .marker-toolbar input[type="file"] {
+      font-size: 12px; padding: 2px 4px; height: 28px;
+    }
+    .marker-toolbar .btn {
+      display: inline-block; padding: 4px 8px; margin-left: 4px;
+      border: 1px solid #bbb; border-radius: 4px; background: #f7f7f7; cursor: pointer;
+    }
+    .marker-toolbar .btn:hover { background: #eee; }
+  </style>
 </head>
 <body>
-  <h3 style="text-align:center;">Peta Pemantauan Rona Calon Tapak PLTN</h3>
-  <div id="map"></div>
-  <div class="toolbar">
-    <input id="markerName" type="text" placeholder="Nama marker (opsional)">
-    <button id="downloadBtn">Download GeoJSON</button>
-    <button id="reloadBtn">Muat Ulang Data</button>
-  </div>
+<h2 style="text-align:center;">Peta Pemantauan Rona Calon Tapak PLTN</h2>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="./script.js"></script>
+<div id="map"></div>
+
+<script>
+  // ===== ICONS =====
+  const iconReaktor = L.icon({ iconUrl: 'icons/nuclear01.png', iconSize: [25, 25] });
+  const iconTapak = L.icon({ iconUrl: 'icons/poin04.png', iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] });
+  const iconPemantauan = L.icon({ iconUrl: 'icons/poin03.png', iconSize: [25, 25], iconAnchor: [12, 25], popupAnchor: [0, -23] });
+
+  // Ikon ala Google Maps (leaflet-color-markers)
+  const shadowUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-shadow.png';
+  const iconUrls = {
+    red:   'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    blue:  'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+    green: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'
+  };
+  function getPinIcon(color='red') {
+    return L.icon({
+      iconUrl: iconUrls[color] || iconUrls.red,
+      shadowUrl,
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+  }
+  const colorHex = { red: '#ff0000', blue: '#0000ff', green: '#008000' };
+
+  // ===== BASEMAPS =====
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+  const osmHOT = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM, HOT' });
+  const openTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenTopoMap' });
+
+  // ===== MAP =====
+  const map = L.map('map', {
+    center: [0.7130, 108.8725],
+    zoom: 14,
+    layers: [osm]
+  });
+
+  // Pane khusus hasil pengukuran agar di atas
+  map.createPane('measurePane');
+  map.getPane('measurePane').style.zIndex = 650;
+
+  // ===== OVERLAYS =====
+  const reaktor = L.layerGroup([
+    L.marker([-6.35177, 106.66343], {icon: iconReaktor}).bindPopup('Reaktor RSG 30 MW'),
+    L.marker([-6.88835, 107.60792], {icon: iconReaktor}).bindPopup('Reaktor TRIGA 2000'),
+    L.marker([-7.77766, 110.41368], {icon: iconReaktor}).bindPopup('Reaktor Kartini'),
+    L.marker([0.7130, 108.87253], {icon: iconReaktor}).bindPopup('Reaktor NuScale')
+  ]);
+
+  const radius2000 = L.layerGroup([
+    L.circle([0.7130, 108.8725], {color: 'red', fillColor: 'red', fillOpacity: 0.2, radius: 2000, interactive: false})
+  ]);
+  const radius1000 = L.layerGroup([
+    L.circle([0.7130, 108.8725], {color: 'blue', fillColor: 'blue', fillOpacity: 0.2, radius: 1000, interactive: false})
+  ]);
+
+  const baseMaps = { "OpenStreetMap": osm, "OpenStreetMap.HOT": osmHOT, "OpenTopoMap": openTopoMap };
+  const overlayMaps = { "Titik Nol": reaktor, "Radius 2 km": radius2000, "Radius 1 km": radius1000 };
+  const layerControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+  // ===== LOAD SHAPEFILES =====
+  shp("data/AOI_2km_grid200.zip").then(function(geojson) {
+    const shpLayer = L.geoJSON(geojson, {
+      style: { color: "#b30000", weight: 2, fillOpacity: 0 },
+      interactive: false
+    }).addTo(map);
+    layerControl.addOverlay(shpLayer, "AOI 2km Grid");
+  });
+
+  shp("data/grid_1000_1.zip").then(function(geojson) {
+    const shpLayer2 = L.geoJSON(geojson, {
+      style: { color: "#0040ff", weight: 2, fillOpacity: 0 },
+      interactive: false
+    }).addTo(map);
+    layerControl.addOverlay(shpLayer2, "Grid 1km");
+  });
+
+  // ===== LOAD GEOJSON TITIK (static) =====
+  fetch("data/titik_pemantauan.geojson")
+    .then(res => res.json())
+    .then(data => {
+      const titikLayer = L.geoJSON(data, {
+        pointToLayer: (feature, latlng) => L.marker(latlng, {icon: iconPemantauan}).bindPopup("<b>" + feature.properties.nama + "</b>")
+      }).addTo(map);
+      layerControl.addOverlay(titikLayer, "Titik Pemantauan");
+    });
+
+  fetch("data/tapak.geojson")
+    .then(res => res.json())
+    .then(data => {
+      const titikLayer = L.geoJSON(data, {
+        pointToLayer: (feature, latlng) => L.marker(latlng, {icon: iconTapak}).bindPopup("<b>" + feature.properties.name + "</b>")
+      }).addTo(map);
+      layerControl.addOverlay(titikLayer, "Titik Pengambilan Sampel");
+    });
+
+  // ===== POPUP KOORDINAT (mode normal) =====
+  function showCoordPopup(e) {
+    const lat = e.latlng.lat.toFixed(6);
+    const lng = e.latlng.lng.toFixed(6);
+    L.popup().setLatLng(e.latlng).setContent("Koordinat: " + lat + ", " + lng).openOn(map);
+  }
+
+  // ===== MEASURE SYSTEM =====
+  map.doubleClickZoom.disable();
+
+  let measuringActive = false;
+  let measurePoints = []; // array [lng, lat]
+  const measureLayer = L.layerGroup().addTo(map);
+
+  const StatusControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd: function() {
+      const div = L.DomUtil.create('div', 'measure-status');
+      div.id = 'measure-status';
+      div.innerHTML = '<div><b>Titik</b>: 0</div><div><b>Jarak</b>: 0 m</div><div><b>Luas</b>: 0 m²</div>';
+      return div;
+    }
+  });
+  new StatusControl().addTo(map);
+
+  function updateStatus(nPts, lenMeters, areaM2) {
+    const el = document.getElementById('measure-status');
+    if (!el) return;
+    const distText = (lenMeters >= 1000) ? (lenMeters/1000).toFixed(3) + ' km' : Math.round(lenMeters) + ' m';
+    let areaText = '0 m²';
+    if (areaM2 !== null) {
+      if (areaM2 >= 1e6) areaText = (areaM2/1e6).toFixed(3) + ' km²';
+      else if (areaM2 >= 1e4) areaText = (areaM2/1e4).toFixed(2) + ' ha';
+      else areaText = Math.round(areaM2) + ' m²';
+    }
+    el.innerHTML = `<div><b>Titik</b>: ${nPts}</div><div><b>Jarak</b>: ${distText}</div><div><b>Luas</b>: ${areaText}</div>`;
+  }
+
+  const MeasureToggle = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function() {
+      const btn = L.DomUtil.create('div', 'leaflet-control-btn');
+      btn.title = 'Aktif/Nonaktif Pengukuran';
+      btn.textContent = '📏';
+      L.DomEvent.disableClickPropagation(btn);
+      btn.onclick = function() {
+        measuringActive = !measuringActive;
+        btn.classList.toggle('active', measuringActive);
+        if (!measuringActive) resetMeasurement();
+      };
+      return btn;
+    }
+  });
+  const ResetBtn = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function() {
+      const btn = L.DomUtil.create('div', 'leaflet-control-btn');
+      btn.title = 'Hapus Pengukuran';
+      btn.textContent = '⟲';
+      L.DomEvent.disableClickPropagation(btn);
+      btn.onclick = resetMeasurement;
+      return btn;
+    }
+  });
+  new MeasureToggle().addTo(map);
+  new ResetBtn().addTo(map);
+
+  map.on('click', function(e) {
+    if (!measuringActive) { showCoordPopup(e); return; }
+    measurePoints.push([e.latlng.lng, e.latlng.lat]);
+    redrawMeasurement();
+  });
+
+  map.on('dblclick', function() {
+    if (measuringActive) resetMeasurement();
+  });
+
+  document.addEventListener('keydown', function(ev) {
+    if (!measuringActive) return;
+    if (ev.key === 'Backspace') {
+      ev.preventDefault();
+      if (measurePoints.length > 0) {
+        measurePoints.pop();
+        redrawMeasurement();
+      }
+    }
+  });
+
+  function redrawMeasurement() {
+    measureLayer.clearLayers();
+
+    measurePoints.forEach(pt => {
+      L.circleMarker([pt[1], pt[0]], { radius: 5, color: 'red', pane: 'measurePane' }).addTo(measureLayer);
+    });
+
+    let lenMeters = 0, areaM2 = null;
+
+    if (measurePoints.length > 1) {
+      const line = turf.lineString(measurePoints);
+      const lenKm = turf.length(line, { units: 'kilometers' });
+      lenMeters = lenKm * 1000;
+      L.polyline(measurePoints.map(p => [p[1], p[0]]), { color: 'red', pane: 'measurePane' }).addTo(measureLayer);
+    }
+
+    if (measurePoints.length > 2) {
+      const polygon = turf.polygon([[...measurePoints, measurePoints[0]]]);
+      areaM2 = turf.area(polygon);
+      L.polygon(measurePoints.map(p => [p[1], p[0]]), { color: 'blue', fillOpacity: 0.12, pane: 'measurePane' }).addTo(measureLayer);
+    }
+
+    updateStatus(measurePoints.length, lenMeters, areaM2);
+  }
+
+  function resetMeasurement() {
+    measurePoints = [];
+    measureLayer.clearLayers();
+    map.closePopup();
+    updateStatus(0, 0, null);
+  }
+
+  // ====== MARKER INTERAKTIF + GEOJSON + KML/KMZ ======
+  const markersLayer = L.featureGroup().addTo(map);
+
+  // State warna ikon saat ini
+  let currentIconColor = 'red';
+
+  // Toolbar kontrol marker (warna ikon, Save/Load/Export)
+  const MarkerToolbar = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function() {
+      const wrap = L.DomUtil.create('div', 'marker-toolbar');
+
+      wrap.innerHTML = `
+        <label>Ikon:</label>
+        <select id="iconColorSel">
+          <option value="red" selected>Merah</option>
+          <option value="blue">Biru</option>
+          <option value="green">Hijau</option>
+        </select>
+        <span class="btn" id="btnSaveGeo">💾 GeoJSON</span>
+        <span class="btn" id="btnKML">KML</span>
+        <span class="btn" id="btnKMZ">KMZ</span>
+        <input type="file" id="uploadGeo" accept=".geojson,.json" title="Unggah GeoJSON">
+      `;
+
+      L.DomEvent.disableClickPropagation(wrap);
+
+      // Events
+      wrap.querySelector('#iconColorSel').addEventListener('change', (e) => {
+        currentIconColor = e.target.value;
+      });
+
+      wrap.querySelector('#btnSaveGeo').addEventListener('click', () => {
+        const geojsonData = markersLayer.toGeoJSON();
+        downloadFile('penanda.geojson', JSON.stringify(geojsonData, null, 2));
+      });
+
+      wrap.querySelector('#btnKML').addEventListener('click', () => {
+        const kml = tokml(markersLayer.toGeoJSON(), {
+          name: 'popup', // pakai teks popup (kalau ada) sebagai name
+          documentName: 'Penanda',
+        });
+        downloadFile('penanda.kml', kml);
+      });
+
+      wrap.querySelector('#btnKMZ').addEventListener('click', () => {
+        const kml = tokml(markersLayer.toGeoJSON(), {
+          name: 'popup',
+          documentName: 'Penanda',
+        });
+        const zip = new JSZip();
+        zip.file('doc.kml', kml);
+        zip.generateAsync({ type: 'blob' }).then((content) => {
+          downloadFile('penanda.kmz', content);
+        });
+      });
+
+      wrap.querySelector('#uploadGeo').addEventListener('change', (evt) => {
+        const file = evt.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          try {
+            const geo = JSON.parse(e.target.result);
+            loadGeoJSONToMarkers(geo);
+            alert('GeoJSON berhasil dimuat!');
+          } catch (err) {
+            alert('File tidak valid.');
+          }
+        };
+        reader.readAsText(file);
+      });
+
+      return wrap;
+    }
+  });
+  new MarkerToolbar().addTo(map);
+
+  // Tambah marker via klik (hanya jika tidak sedang mengukur)
+  map.on('click', function(e) {
+    if (measuringActive) return;
+    // Pop-up text opsional
+    const popupText = prompt("Keterangan penanda (opsional):", "");
+    addMarker(e.latlng.lat, e.latlng.lng, currentIconColor, popupText || '');
+  });
+
+  // Util: download file
+  function downloadFile(filename, content) {
+    const blob = (content instanceof Blob) ? content : new Blob([content], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Tambah marker + properti ke GeoJSON (agar toGeoJSON menyimpan properties)
+  function addMarker(lat, lng, color='red', popupText='') {
+    const marker = L.marker([lat, lng], { draggable: true, icon: getPinIcon(color) })
+      .bindPopup(popupContent(lat, lng, color, popupText))
+      .addTo(markersLayer);
+
+    // Pastikan properti ikut tersimpan saat toGeoJSON()
+    marker.feature = marker.feature || { type: 'Feature', properties: {} };
+    marker.feature.properties['popup'] = popupText;
+    marker.feature.properties['iconColor'] = color;
+    marker.feature.properties['marker-color'] = colorHex[color] || colorHex.red; // SimpleStyle untuk KML
+
+    marker.on('dragend', function(evt) {
+      const pos = evt.target.getLatLng();
+      marker.setPopupContent(popupContent(pos.lat, pos.lng, color, popupText));
+    });
+  }
+
+  // Popup marker + tombol Hapus
+  function popupContent(lat, lng, color, popupText) {
+    const safeText = (popupText || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `
+      <div style="min-width:160px">
+        <div><b>${safeText || '(tanpa keterangan)'}</b></div>
+        <div>Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}</div>
+        <div>Ikon: ${color}</div>
+        <button onclick="deleteMarker(${lat}, ${lng})" style="margin-top:6px;color:#fff;background:#e11; border:1px solid #c00; border-radius:4px; padding:2px 6px;">Hapus</button>
+      </div>
+    `;
+  }
+
+  // Hapus marker berdasarkan posisi (ketelitian 1e-6)
+  window.deleteMarker = function(lat, lng) {
+    markersLayer.eachLayer(function(layer) {
+      if (layer.getLatLng) {
+        const p = layer.getLatLng();
+        if (p.lat.toFixed(6) == lat.toFixed(6) && p.lng.toFixed(6) == lng.toFixed(6)) {
+          markersLayer.removeLayer(layer);
+        }
+      }
+    });
+  };
+
+  // Muat GeoJSON ke markersLayer (dengan ikon & properti)
+  function loadGeoJSONToMarkers(geojson) {
+    markersLayer.clearLayers();
+    L.geoJSON(geojson, {
+      pointToLayer: function(feature, latlng) {
+        const color = normalizeColorFromProps(feature.properties);
+        const popupText = feature.properties && feature.properties.popup || '';
+        const m = L.marker(latlng, { draggable: true, icon: getPinIcon(color) })
+          .bindPopup(popupContent(latlng.lat, latlng.lng, color, popupText))
+          .on('dragend', function(evt) {
+            const pos = evt.target.getLatLng();
+            evt.target.setPopupContent(popupContent(pos.lat, pos.lng, color, popupText));
+          });
+
+        // Pastikan feature properties ikut tersimpan
+        m.feature = feature;
+        // Tambahkan/normalisasi properti SimpleStyle
+        m.feature.properties = m.feature.properties || {};
+        m.feature.properties['iconColor'] = color;
+        m.feature.properties['marker-color'] = colorHex[color] || colorHex.red;
+        return m;
+      }
+    }).addTo(markersLayer);
+  }
+
+  // Ambil warna dari properties (iconColor atau marker-color)
+  function normalizeColorFromProps(props={}) {
+    if (props.iconColor && iconUrls[props.iconColor]) return props.iconColor;
+    if (props['marker-color']) {
+      const hex = props['marker-color'].toLowerCase();
+      // mapping sederhana hex -> nama
+      if (hex.startsWith('#ff0000')) return 'red';
+      if (hex.startsWith('#0000ff')) return 'blue';
+      if (hex.startsWith('#008000')) return 'green';
+    }
+    return 'red';
+  }
+
+</script>
+
 </body>
 </html>

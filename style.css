@@ -1,5 +1,9 @@
-html, body { height: 100%; margin: 0; }
-#map { height: 80vh; width: 100%; }
-.toolbar { display:flex; gap:8px; justify-content:center; align-items:center; padding:10px; }
-.toolbar input { padding:8px 10px; min-width: 220px; }
-.toolbar button { padding:8px 14px; cursor:pointer; }
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+#map {
+  height: 90vh; /* 90% tinggi layar */
+  width: 100%;
+}
