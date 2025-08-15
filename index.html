@@ -2,23 +2,21 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Peta Leaflet</title>
+  <title>Peta Pemantauan Rona</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
-  <!-- Custom CSS -->
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <h3 style="text-align:center;">Peta Leaflet - GitHub Pages</h3>
+  <h3 style="text-align:center;">Peta Pemantauan Rona Calon Tapak PLTN</h3>
   <div id="map"></div>
+  <div class="toolbar">
+    <input id="markerName" type="text" placeholder="Nama marker (opsional)">
+    <button id="downloadBtn">Download GeoJSON</button>
+    <button id="reloadBtn">Muat Ulang Data</button>
+  </div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Custom JS -->
   <script src="./script.js"></script>
 </body>
 </html>
