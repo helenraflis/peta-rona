@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Titik Contoh" },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.8, -6.2]
+      }
+    }
+  ]
+}
