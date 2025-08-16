@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>WebGIS Leaflet + Measure + Markers + KML/KMZ</title>
+  <title>WEB GIS - KF EDL DI2BN</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Leaflet -->
@@ -18,11 +18,11 @@
   <!-- tokml (GeoJSON -> KML) -->
   <script src="https://unpkg.com/tokml/tokml.js"></script>
 
-  <!-- JSZip (untuk KMZ) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
+  <!-- JSZip (untuk KMZ)  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  -->
+  
   <style>
-    #map { width: 100%; height: 90vh; }
+    #map { width: 100%; height: 600px; }
 
     /* Tombol kontrol */
     .leaflet-control-btn {
@@ -71,7 +71,8 @@
   </style>
 </head>
 <body>
-<h2 style="text-align:center;">Peta Pemantauan Rona Calon Tapak PLTN</h2>
+  <h1 style="text-align:center;">Peta Pemantauan Rona Calon Tapak PLTN</h1>
+
 
 <div id="map"></div>
 
@@ -101,21 +102,99 @@
   const colorHex = { red: '#ff0000', blue: '#0000ff', green: '#008000' };
 
   // ===== BASEMAPS =====
-  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
-  const osmHOT = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM, HOT' });
-  const openTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenTopoMap' });
+  //const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+  //const osmHOT = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM, HOT' });
+  //const openTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenTopoMap' });
 
   // ===== MAP =====
-  const map = L.map('map', {
-    center: [0.7130, 108.8725],
-    zoom: 14,
-    layers: [osm]
-  });
+  //const map = L.map('map', {
+  //  center: [0.7130, 108.8725],
+  //  zoom: 14,
+  //  layers: [osm]
+  //});
+
+
+
+// BATAS TAMBAHAN BARU
+
+// ===== BASEMAPS =====
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    });
+
+    const osmHOT = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors, Tiles style by HOT'
+    });
+
+    const openTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors, Map style: OpenTopoMap'
+    });
+
+// ===== MAP =====
+    const map = L.map('map', {
+      center: [0.7130, 108.8725],
+      zoom: 14,
+      layers: [osm]
+    });
+
+    // ===== CONTOH OVERLAY =====
+    const reaktor = L.marker([0.7130, 108.8725]).bindPopup("Titik Nol");
+    const radius2000 = L.circle([0.7130, 108.8725], { radius: 2000, color: "red" });
+    const radius1000 = L.circle([0.7130, 108.8725], { radius: 1000, color: "blue" });
+
+    // ===== BASEMAP LIST =====
+    const baseMaps = { 
+      "OpenStreetMap": osm, 
+      "OpenStreetMap.HOT": osmHOT, 
+      "OpenTopoMap": openTopoMap 
+    };
+
+    // ===== KOORDINAT OPSI LOKASI =====
+    const lokasi = {
+      "Pantai Gosong": [ 0.7130, 108.8725 ],
+      "Pulau Gelasa": [ -2.4131339732714356, 107.07602908421642 ],
+      "Tapak Muria": [ -6.427778, 110.788889 ]
+    };
+
+    // buat layer group + marker untuk tiap lokasi
+    const lokasiLayers = {};
+    Object.keys(lokasi).forEach(nama => {
+      const marker = L.marker(lokasi[nama]).bindPopup(`<b>${nama}</b>`);
+      lokasiLayers[nama] = L.layerGroup([marker]);
+    });
+
+    // ===== OVERLAYS =====
+    const overlayMaps = { 
+      "Titik Nol": reaktor, 
+      "Radius 2 km": radius2000, 
+      "Radius 1 km": radius1000
+    };
+
+    // ===== CONTROL =====
+    L.control.layers({ ...baseMaps, ...lokasiLayers }, overlayMaps).addTo(map);
+
+    // Event listener: kalau user pilih lokasi → flyTo + buka popup
+    map.on('baselayerchange', function(e) {
+      if (lokasi[e.name]) {
+        map.flyTo(lokasi[e.name], 13); // zoom bisa disesuaikan
+        lokasiLayers[e.name].eachLayer(layer => {
+          if (layer.getPopup()) {
+            layer.openPopup();
+          }
+        });
+      }
+    });
+
+
+// BATAS TAMBAHAN BARU
+
+
 
   // Pane khusus hasil pengukuran agar di atas
   map.createPane('measurePane');
   map.getPane('measurePane').style.zIndex = 650;
 
+ /* ... 
   // ===== OVERLAYS =====
   const reaktor = L.layerGroup([
     L.marker([-6.35177, 106.66343], {icon: iconReaktor}).bindPopup('Reaktor RSG 30 MW'),
@@ -134,7 +213,7 @@
   const baseMaps = { "OpenStreetMap": osm, "OpenStreetMap.HOT": osmHOT, "OpenTopoMap": openTopoMap };
   const overlayMaps = { "Titik Nol": reaktor, "Radius 2 km": radius2000, "Radius 1 km": radius1000 };
   const layerControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
-
+*/
   // ===== LOAD SHAPEFILES =====
   shp("data/AOI_2km_grid200.zip").then(function(geojson) {
     const shpLayer = L.geoJSON(geojson, {
@@ -298,6 +377,7 @@
   let currentIconColor = 'red';
 
   // Toolbar kontrol marker (warna ikon, Save/Load/Export)
+  // Tombol KMZ dinonaktifkan sementara ==> <span class="btn" id="btnKMZ">KMZ</span>
   const MarkerToolbar = L.Control.extend({
     options: { position: 'topleft' },
     onAdd: function() {
@@ -312,7 +392,7 @@
         </select>
         <span class="btn" id="btnSaveGeo">💾 GeoJSON</span>
         <span class="btn" id="btnKML">KML</span>
-        <span class="btn" id="btnKMZ">KMZ</span>
+        
         <input type="file" id="uploadGeo" accept=".geojson,.json" title="Unggah GeoJSON">
       `;
 
@@ -336,6 +416,7 @@
         downloadFile('penanda.kml', kml);
       });
 
+      /*
       wrap.querySelector('#btnKMZ').addEventListener('click', () => {
         const kml = tokml(markersLayer.toGeoJSON(), {
           name: 'popup',
@@ -347,6 +428,7 @@
           downloadFile('penanda.kmz', content);
         });
       });
+      */
 
       wrap.querySelector('#uploadGeo').addEventListener('change', (evt) => {
         const file = evt.target.files[0];
